@@ -7,4 +7,6 @@
 5. Run `./scripts/verify.sh`, then the local stack from empty volumes with `SMOKE_STATE=/tmp/formbricks-smoke.json SMOKE_PHASE=initial ./scripts/smoke.sh`, restart every service, and run `SMOKE_STATE=/tmp/formbricks-smoke.json SMOKE_PHASE=restart ./scripts/smoke.sh` with the same state file.
 6. Tag the release, fast-forward `release-v1` (Cube rebuilds from it), and update the image digests in the published Railway template.
 
+Keep `scripts/formbricks-guard.cjs` inserting the sign-up sentinel before Formbricks listens publicly: the guard treats a database without it as never having been public. Do not change that rule without a migration for existing databases.
+
 Formbricks, Hub and SpiceDB migrate their schemas on start and cannot be downgraded in place; restore the volume backup to roll back. Formbricks documents extra steps for upgrades that cross a major version (for example the SpiceDB migration in 6.0); follow them before deploying a new major release.
