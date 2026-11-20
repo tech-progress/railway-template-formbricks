@@ -8,8 +8,8 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 for file in .dockerignore .env.example .gitignore .railway/railway.ts CHANGELOG.md Dockerfile LICENSE_REVIEW.md MARKETPLACE.md PUBLISHING.md README.md SUPPORT.md UPGRADE.md VERSION bun.lock compose.yaml package.json \
   cube/LICENSE cube/cube.js cube/model/FeedbackRecords.js template-defaults.json template-descriptions.json template-networking.json template-volumes.json \
-  scripts/audit-template.sh scripts/check-standalone.sh scripts/restore-template-draft.sh scripts/smoke.sh \
-  scripts/formbricks-start.sh scripts/hub-start.sh scripts/hub-worker-start.sh scripts/postgres-start.sh scripts/spicedb-start.sh; do
+  scripts/audit-template.sh scripts/check-standalone.sh scripts/restore-template-draft.sh scripts/smoke.sh scripts/test-draft-contract.sh scripts/test-guard.sh scripts/formbricks-guard.cjs scripts/fixtures/draft.json \
+  scripts/formbricks-start.sh scripts/hub-start.sh scripts/hub-worker-start.sh scripts/postgres-start.sh scripts/spicedb-start.sh scripts/valkey-start.sh; do
   [[ -f "${root}/${file}" ]] || fail "missing ${file}"
 done
 
@@ -20,9 +20,18 @@ for file in README.md PUBLISHING.md; do grep -Fq "current template release is \`
 
 for file in "${root}"/template-*.json "${root}/package.json"; do jq empty "${file}"; done
 for file in "${root}"/scripts/*.sh; do bash -n "${file}"; done
-for name in formbricks hub hub-worker postgres spicedb; do
+for name in formbricks hub hub-worker postgres spicedb valkey; do
   ! grep -v '^[[:space:]]*#' "${root}/scripts/${name}-start.sh" | grep -q "'" || fail "a command line in scripts/${name}-start.sh contains a single quote"
 done
+
+# The start command embeds scripts/formbricks-guard.cjs byte for byte.
+embedded="$(sed -n 's/^printf "%s" "\([A-Za-z0-9+\/=]*\)" | base64 -d > \/tmp\/formbricks-guard.cjs$/\1/p' "${root}/scripts/formbricks-start.sh")"
+[[ -n "${embedded}" ]] && cmp -s <(base64 -d <<<"${embedded}") "${root}/scripts/formbricks-guard.cjs" || fail "the guard embedded in formbricks-start.sh differs from scripts/formbricks-guard.cjs"
+node --check "${root}/scripts/formbricks-guard.cjs" || fail "formbricks-guard.cjs does not parse"
+# Hub migrations take credentials from the environment, never from arguments.
+! grep -v '^[[:space:]]*#' "${root}/scripts/hub-start.sh" | grep -Eq -- '(--database-url|postgres "\$DATABASE_URL")' || fail "hub-start.sh passes the database URL as an argument"
+# Restore and audit hold against offline mutations of the stored draft.
+"${root}/scripts/test-draft-contract.sh" >/dev/null || fail "scripts/test-draft-contract.sh failed"
 
 # Cube's configuration is upstream's docker/cube at Formbricks 6.2.1, unchanged.
 (cd "${root}/cube" && sha256sum --check --quiet) <<'EOF' || fail "cube/ differs from Formbricks 6.2.1 docker/cube"
@@ -32,7 +41,7 @@ EOF
 grep -q 'GNU AFFERO GENERAL PUBLIC LICENSE' "${root}/cube/LICENSE" || fail "cube/LICENSE is not the Formbricks AGPL license text"
 ! grep -Eq '^VOLUME' "${root}/Dockerfile" || fail "Railway rejects Dockerfile VOLUME"
 
-graph="$(cd "${root}" && env -u FORMBRICKS_IAC_CUBE_SEED ./node_modules/.bin/railway-iac-ts .railway/railway.ts </dev/null)"
+graph="$(cd "${root}" && env -i PATH="${PATH}" HOME="${HOME}" ./node_modules/.bin/railway-iac-ts .railway/railway.ts </dev/null)"
 jq -e '.ok==true' <<<"${graph}" >/dev/null || fail "IaC graph did not compile"
 svc() { jq -c --arg n "$1" '.graph.resources[]|select(.type=="service" and .name==$n)' <<<"${graph}"; }
 jq -e '([.graph.resources[]|select(.type=="service")|.name]|sort)==["Cube","Formbricks","Formbricks Hub","Formbricks Hub Worker","PostgreSQL","SpiceDB","Valkey"]' <<<"${graph}" >/dev/null || fail "IaC service set"
@@ -54,11 +63,11 @@ for name in Formbricks "Formbricks Hub" "Formbricks Hub Worker" PostgreSQL Spice
   jq -e '.source.image|test("@sha256:[0-9a-f]{64}$")' <<<"$(svc "${name}")" >/dev/null || fail "${name} image is not pinned"
 done
 jq -e '.source.repo=="tech-progress/railway-template-formbricks" and .source.branch=="release-v1" and .source.rootDirectory=="/" and .build.builder=="DOCKERFILE" and .build.dockerfilePath=="Dockerfile" and .deploy.healthcheckPath=="/readyz"' <<<"$(svc Cube)" >/dev/null || fail "Cube source or health check"
-seeded="$(cd "${root}" && FORMBRICKS_IAC_CUBE_SEED=1 ./node_modules/.bin/railway-iac-ts .railway/railway.ts </dev/null)"
+seeded="$(cd "${root}" && env -i PATH="${PATH}" HOME="${HOME}" FORMBRICKS_IAC_CUBE_SEED=1 ./node_modules/.bin/railway-iac-ts .railway/railway.ts </dev/null)"
 jq -e --arg img "$(pin CUBE_BASE_IMAGE)" '.graph.resources[]|select(.name=="Cube")|.source.image==$img and .build==null' <<<"${seeded}" >/dev/null || fail "seeded Cube must use the base image only"
 
 # Start commands are the joined scripts, and Compose runs the same files.
-for pair in "Formbricks:formbricks" "Formbricks Hub:hub" "Formbricks Hub Worker:hub-worker" "PostgreSQL:postgres" "SpiceDB:spicedb"; do
+for pair in "Formbricks:formbricks" "Formbricks Hub:hub" "Formbricks Hub Worker:hub-worker" "PostgreSQL:postgres" "SpiceDB:spicedb" "Valkey:valkey"; do
   name="${pair%%:*}"; script="${pair#*:}"
   expected="/bin/sh -ec '$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "${root}/scripts/${script}-start.sh" | awk 'NR > 1 { printf "; " } { printf "%s", $0 }')'"
   [[ "$(jq -r '.deploy.startCommand' <<<"$(svc "${name}")")" == "${expected}" ]] || fail "${name} start command is not scripts/${script}-start.sh"

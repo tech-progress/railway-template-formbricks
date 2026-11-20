@@ -10,30 +10,39 @@ workspace_id="${2:?Usage: ./scripts/restore-template-draft.sh TEMPLATE_ID WORKSP
 template_name="Formbricks Community Surveys"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 token="$(jq -r '.user.accessToken' "${RAILWAY_CONFIG_PATH:-${HOME}/.railway/config.json}")"
-graph="$(cd "${root}" && env -u FORMBRICKS_IAC_CUBE_SEED ./node_modules/.bin/railway-iac-ts .railway/railway.ts </dev/null)"
+# Compile with a scrubbed environment so no FORMBRICKS_IAC_* source-project
+# credential from the applying shell reaches the graph, and hand JSON to jq
+# through files, not arguments.
+work="$(mktemp -d)"
+trap 'rm -rf "${work:?}"' EXIT
+(cd "${root}" && env -i PATH="${PATH}" HOME="${HOME}" ./node_modules/.bin/railway-iac-ts .railway/railway.ts </dev/null) > "${work}/graph.json"
 # The bearer token reaches curl through a config file descriptor (printf is a
 # shell builtin), never through process arguments visible on a shared machine.
 internal_api() {
   curl --compressed --fail --silent --show-error --config <(printf 'header = "Authorization: Bearer %s"\n' "${token}") \
     -H 'Content-Type: application/json' --data-binary @- https://backboard.railway.com/graphql/internal <<<"$1"
 }
-draft="$(railway api 'query Draft($id:String!){template(id:$id){serializedConfig}}' --var "id=${template_id}" --compact)"
+railway api 'query Draft($id:String!){template(id:$id){serializedConfig}}' --var "id=${template_id}" --compact > "${work}/draft.json"
 
-variables="$(jq -nc --argjson draft "${draft}" --argjson graph "${graph}" \
+jq -nc --slurpfile draftfile "${work}/draft.json" --slurpfile graphfile "${work}/graph.json" \
   --slurpfile defaults "${root}/template-defaults.json" --slurpfile descriptions "${root}/template-descriptions.json" \
   --slurpfile volumes "${root}/template-volumes.json" --slurpfile networking "${root}/template-networking.json" \
   --arg id "${template_id}" --arg workspaceId "${workspace_id}" --arg name "${template_name}" '
-  ($graph.graph.resources|map(select(.type=="service"))|map({key:.name,value:.})|from_entries) as $desired
+  $draftfile[0] as $draft | $graphfile[0] as $graph
+  | ($graph.graph.resources|map(select(.type=="service"))|map({key:.name,value:.})|from_entries) as $desired
   | $draft.data.template.serializedConfig as $config
   | if (($config.services|map(.name)|sort)!=($desired|keys|sort)) then error("Draft service set mismatch") else
       reduce ($config.services|to_entries[]) as $s ($config;
         $desired[$s.value.name] as $d
+        # Keep only the fields this contract manages (drops configFile and any
+        # other generated or unknown service setting), then set source and build
+        # wholesale: no commit pin, extra build option or seed image survives.
+        | .services[$s.key] |= with_entries(select(.key as $k | ["deploy","icon","name","networking","source","variables","volumeMounts"]|index($k)))
         | if $d.source.image != null then
             .services[$s.key].source = {image:$d.source.image}
-            | del(.services[$s.key].build)
           else
             .services[$s.key].source = {repo:$d.source.repo, branch:$d.source.branch, rootDirectory:$d.source.rootDirectory}
-            | .services[$s.key].build = ((.services[$s.key].build // {}) + $d.build)
+            | .services[$s.key].build = $d.build
           end
         # Replace deploy wholesale so no generated field (for example a
         # preDeployCommand) survives beside the checked-in contract.
@@ -60,10 +69,11 @@ variables="$(jq -nc --argjson draft "${draft}" --argjson graph "${graph}" \
             serviceDomains: (if $networking[0][$s.value.name].publicPort != null
               then {"<hasDomain>":{port:$networking[0][$s.value.name].publicPort}} else {} end),
             tcpProxies: {}})
+      | .buckets = {}
       | {id:$id, input:{name:$name, workspaceId:$workspaceId, serializedConfig:.}}
-    end')"
+    end' > "${work}/variables.json"
 
-request="$(jq -nc --argjson variables "${variables}" --arg query 'mutation Update($id:String!,$input:TemplateUpsertConfigInput!){templateUpsertConfig(id:$id,input:$input){id code}}' '{query:$query,variables:$variables}')"
+request="$(jq -nc --slurpfile variables "${work}/variables.json" --arg query 'mutation Update($id:String!,$input:TemplateUpsertConfigInput!){templateUpsertConfig(id:$id,input:$input){id code}}' '{query:$query,variables:$variables[0]}')"
 response="$(internal_api "${request}")"
 jq -e '.data.templateUpsertConfig.id!=null and ((.errors//[])|length==0)' <<<"${response}" >/dev/null || { jq -c '.errors' <<<"${response}" >&2; exit 1; }
 

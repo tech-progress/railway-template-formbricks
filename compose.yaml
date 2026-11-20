@@ -30,10 +30,11 @@ services:
   valkey:
     image: docker.io/valkey/valkey:9.1.2@sha256:418652cfb58ef879d4978c33553735d7147016032d5aefaa14c828e611eb9dfd
     entrypoint: ["/bin/sh", "-ec"]
-    command: ['exec valkey-server --appendonly yes --maxmemory-policy noeviction --requirepass "$$VALKEY_PASSWORD"']
+    command: [". /template/scripts/valkey-start.sh"]
     environment:
       VALKEY_PASSWORD: ${VALKEY_PASSWORD:?Set VALKEY_PASSWORD}
     volumes:
+      - ./scripts:/template/scripts:ro
       - type: volume
         source: valkey-data
         target: /data

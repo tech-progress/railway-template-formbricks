@@ -8,7 +8,7 @@ Upstream compiles the `ee` code into the same official image it publishes for ev
 - sets no `ENTERPRISE_LICENSE_KEY`, so every feature gated by the license check (`apps/web/modules/ee/license-check/lib/utils.ts`: multiple organizations, SSO and SAML, two-factor auth, contacts, roles and access control, audit logs, quotas, dashboards, feedback directories, workflows, data retention, spam protection, whitelabeling and branding removal) stays off;
 - does not describe enterprise features as included functionality.
 
-The `Cube` image adds two files copied unchanged from `docker/cube/` at tag `6.2.1` (`cube.js` and `schema/FeedbackRecords.js`, outside the `ee` directory, so AGPL-3.0). The distribution repository keeps them with the upstream LICENSE text in `cube/LICENSE` and links their source. The base image `ghcr.io/formbricks/cube` packages Cube's server packages (Apache-2.0; the Cube repository uses MIT for a few components) and is used unmodified underneath those two files.
+The `Cube` image adds two files copied unchanged from `docker/cube/` at tag `6.2.1` (`cube.js`, kept as `cube/cube.js`, and `schema/FeedbackRecords.js`, kept as `cube/model/FeedbackRecords.js`; both outside the `ee` directory, so AGPL-3.0). The distribution repository keeps them with the upstream LICENSE text in `cube/LICENSE` and links their source. The base image `ghcr.io/formbricks/cube` packages Cube's server packages (Apache-2.0; the Cube repository uses MIT for a few components) and is used unmodified underneath those two files.
 
 Formbricks Hub declares Apache-2.0 in its OpenAPI document. SpiceDB is Apache-2.0. PostgreSQL (PostgreSQL License) with pgvector (PostgreSQL License) and Valkey (BSD-3-Clause) run as unmodified official images.
 

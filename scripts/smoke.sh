@@ -149,9 +149,16 @@ for path in /setup/intro /setup/signup /auth/signup; do
 done
 code="$(status -H 'Content-Type: application/json' -H "Origin: ${base_url}" --data '{"email":"probe@example.com","password":"Probe12345678","name":"Probe"}' "${base_url}/api/auth/sign-up/email")"
 [[ "${code}" == 404 || "${code}" == 403 ]] || fail "raw Better Auth sign-up returned ${code}"
-for page in /auth/login /auth/signup /setup/signup; do
-  result="$(printf '%s' '[{"name":"Probe","email":"probe@example.com","password":"Probe12345678"}]' | action "${signup_action}" "${page}" || true)"
-  grep -q '"serverError":"signup_disabled"' <<<"${result}" || fail "sign-up action through ${page} was not refused"
+# The sign-up pages host the action and must refuse it. Other pages make Next.js
+# forward the action to those pages: locally that also answers signup_disabled,
+# behind Railway's edge the forward answers an empty {} without running it.
+# Either way no account may appear, which the probe sign-in below checks.
+for page in /auth/signup /setup/signup /auth/login /; do
+  result="$(curl --silent --show-error -H "Next-Action: ${signup_action}" -H 'Accept: text/x-component' -H 'Content-Type: text/plain;charset=UTF-8' \
+    -H "Origin: ${base_url}" --data-binary '[{"name":"Probe","email":"probe@example.com","password":"Probe12345678"}]' "${base_url}${page}" || true)"
+  grep -q '^1:{"serverError":"signup_disabled"}$' <<<"${result}" && continue
+  [[ "${page}" != /auth/signup && "${page}" != /setup/signup && "${result}" == '{}' ]] && continue
+  fail "sign-up action through ${page} was not refused"
 done
 code="$(printf '%s' '{"email":"probe@example.com","password":"Probe12345678"}' | sign_in_status)"
 [[ "${code}" == 401 ]] || fail "probe account sign-in returned ${code}; it must not exist"

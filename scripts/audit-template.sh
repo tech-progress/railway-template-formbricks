@@ -7,7 +7,7 @@ template_id="${1:?Usage: ./scripts/audit-template.sh TEMPLATE_ID [EXPECTED_STATU
 expected_status="${2:-}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 template="$(railway api 'query Audit($id:String!){template(id:$id){name status serializedConfig}}' --var "id=${template_id}" --compact)"
-graph="$(cd "${root}" && env -u FORMBRICKS_IAC_CUBE_SEED ./node_modules/.bin/railway-iac-ts .railway/railway.ts </dev/null)"
+graph="$(cd "${root}" && env -i PATH="${PATH}" HOME="${HOME}" ./node_modules/.bin/railway-iac-ts .railway/railway.ts </dev/null)"
 failures=0
 check() { local label="$1"; shift; if ! "$@"; then echo "mismatch: ${label}" >&2; failures=$((failures + 1)); fi; }
 eq() { [[ "$1" == "$2" ]]; }
@@ -16,21 +16,24 @@ check "template name" eq "$(jq -r '.data.template.name' <<<"${template}")" "Form
 [[ -z "${expected_status}" ]] || check "template status" eq "$(jq -r '.data.template.status' <<<"${template}")" "${expected_status}"
 desired_names="$(jq -r '[.graph.resources[]|select(.type=="service")|.name]|sort|join("\n")' <<<"${graph}")"
 check "service set" eq "$(jq -r '.data.template.serializedConfig.services|map(.name)|sort|join("\n")' <<<"${template}")" "${desired_names}"
+check "top-level keys" eq "$(jq -c '.data.template.serializedConfig|keys' <<<"${template}")" '["buckets","services"]'
+check "no buckets" eq "$(jq -c '.data.template.serializedConfig.buckets // {}|length' <<<"${template}")" 0
 check "service set literal" eq "${desired_names}" $'Cube\nFormbricks\nFormbricks Hub\nFormbricks Hub Worker\nPostgreSQL\nSpiceDB\nValkey'
 
 while IFS= read -r name; do
   desired="$(jq -c --arg n "${name}" '.graph.resources[]|select(.type=="service" and .name==$n)' <<<"${graph}")"
   actual="$(jq -c --arg n "${name}" '[.data.template.serializedConfig.services[]|select(.name==$n)][0]' <<<"${template}")"
+  # Whole-object comparisons: any extra source field (commit pin, seed image),
+  # build option, watch pattern or unmanaged service key fails.
   if [[ "$(jq -r '.source.image // ""' <<<"${desired}")" != "" ]]; then
-    check "${name} image" eq "$(jq -r '.source.image // ""' <<<"${actual}")" "$(jq -r '.source.image' <<<"${desired}")"
-    check "${name} no repo fields" eq "$(jq -r '[.source.repo,.source.branch,.source.rootDirectory]|map(select(.!=null and .!=""))|length' <<<"${actual}")" 0
+    check "${name} source" eq "$(jq -cS '.source' <<<"${actual}")" "$(jq -cS '{image:.source.image}' <<<"${desired}")"
+    check "${name} no build" eq "$(jq -c '.build // null' <<<"${actual}")" null
+    check "${name} service keys" eq "$(jq -c 'keys' <<<"${actual}")" '["deploy","icon","name","networking","source","variables","volumeMounts"]'
   else
-    check "${name} repo" eq "$(jq -r '(.source.repo // "")|sub("^https://github.com/";"")|sub("\\.git$";"")' <<<"${actual}")" "tech-progress/railway-template-formbricks"
-    check "${name} branch" eq "$(jq -r '.source.branch // ""' <<<"${actual}")" release-v1
-    check "${name} root" eq "$(jq -r '.source.rootDirectory // ""' <<<"${actual}")" /
-    check "${name} no image" eq "$(jq -r '.source.image // ""' <<<"${actual}")" ""
-    check "${name} builder" eq "$(jq -r '.build.builder // ""' <<<"${actual}")" DOCKERFILE
-    check "${name} dockerfile" eq "$(jq -r '.build.dockerfilePath // ""' <<<"${actual}")" Dockerfile
+    check "${name} source" eq "$(jq -cS '.source' <<<"${actual}")" '{"branch":"release-v1","repo":"tech-progress/railway-template-formbricks","rootDirectory":"/"}'
+    check "${name} build" eq "$(jq -cS '.build' <<<"${actual}")" "$(jq -cS '.build' <<<"${desired}")"
+    check "${name} build literal" eq "$(jq -cS '.build' <<<"${actual}")" '{"builder":"DOCKERFILE","dockerfilePath":"Dockerfile","watchPatterns":["/Dockerfile","/cube/**"]}'
+    check "${name} service keys" eq "$(jq -c 'keys' <<<"${actual}")" '["build","deploy","icon","name","networking","source","variables","volumeMounts"]'
   fi
   for field in startCommand healthcheckPath healthcheckTimeout; do
     check "${name} ${field}" eq "$(jq -c --arg f "${field}" '.deploy[$f] // null' <<<"${actual}")" "$(jq -c --arg f "${field}" '.deploy[$f] // null' <<<"${desired}")"

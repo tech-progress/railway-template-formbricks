@@ -36,8 +36,7 @@ export const HUB_START = startScript("hub");
 export const HUB_WORKER_START = startScript("hub-worker");
 export const SPICEDB_START = startScript("spicedb");
 export const POSTGRES_START = startScript("postgres");
-export const VALKEY_START =
-  "/bin/sh -ec 'exec valkey-server --appendonly yes --maxmemory-policy noeviction --requirepass \"$VALKEY_PASSWORD\"'";
+export const VALKEY_START = startScript("valkey");
 
 // Credentials are never derived here: the IaC random-string helper is a public
 // hash of its label. A disposable source project takes fresh values from

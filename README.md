@@ -14,13 +14,15 @@ Formbricks is an open-source survey and experience-management platform: link sur
 | `Cube` | no | this repository, `release-v1` branch, `Dockerfile` | `ghcr.io/formbricks/cube:1.8.8-3` by digest plus Formbricks' Cube configuration and data model (`cube/`, copied unchanged from Formbricks 6.2.1), because Railway cannot mount files. |
 | `SpiceDB` | no | `authzed/spicedb:v1.57.0-debug` by digest | Authorization service Formbricks 6 requires. The `-debug` variant adds a shell so the start command can retry the schema migration while PostgreSQL starts. |
 | `PostgreSQL` | no | `pgvector/pgvector:0.8.7-pg18` by digest | One server, two databases: `formbricks` (Formbricks and Hub) and `spicedb` (its own role). 5 GB volume at `/var/lib/postgresql`. |
-| `Valkey` | no | `valkey/valkey:9.1.2` by digest | Password-protected sessions, rate limits and the background job queue, with append-only persistence on a 1 GB volume at `/data`. |
+| `Valkey` | no | `valkey/valkey:9.1.2` by digest | Password-protected sessions, rate limits and the background job queue, with append-only persistence on a 1 GB volume at `/data`. Started through the image's entrypoint, so it runs as the unprivileged `valkey` user; the password is passed in a 0600 config file, not on the command line. |
 
 Only `Formbricks` has a public domain. Every other service is reachable only over Railway's private network, and each one has its own generated credential.
 
 ### The owner account is created before the app goes public
 
-A fresh Formbricks instance lets whoever signs up first become its administrator. This template closes that race: on every start, Formbricks first boots bound to `127.0.0.1` only, where Railway's proxy, health check and other services cannot reach it, and creates the owner account for `FORMBRICKS_OWNER_EMAIL` with the generated `FORMBRICKS_OWNER_PASSWORD` through Formbricks' own sign-up action. Only then does it restart on its public listener. From that moment Formbricks itself refuses uninvited sign-ups. On later starts the sign-up is refused because the owner exists, and the app starts normally. The password is removed from the environment of both Formbricks processes.
+A fresh Formbricks instance lets whoever signs up first become its administrator, and it treats the instance as fresh again whenever its user table is empty. This template closes both openings. On every start, Formbricks first boots bound to `127.0.0.1` only, where Railway's proxy, health check and other services cannot reach it. A small guard (`scripts/formbricks-guard.cjs`, embedded in the start command) checks the database. On the first start it creates the owner account for `FORMBRICKS_OWNER_EMAIL` with the generated `FORMBRICKS_OWNER_PASSWORD` through Formbricks' own sign-up action and proves it by signing in on loopback; if an earlier first start was interrupted, rows it left without a password are removed first. Then, before the public listener ever opens, the guard adds one deactivated placeholder user, `bootstrap-sentinel@formbricks.invalid` (no password, no organization), and never removes it. The user table therefore cannot become empty while any deployment is reachable, even if the owner deletes their own account. The owner password is removed from the environment of both Formbricks processes, and the reserved placeholder address is refused as `FORMBRICKS_OWNER_EMAIL`.
+
+If the only real account is ever deleted, Formbricks stays closed: nobody can sign up. To start over, stop the `Formbricks` service first so no deployment is serving, then either deploy with an empty PostgreSQL volume or delete every row of the `User` table, including the placeholder; the next start creates the owner again. Never delete the placeholder while a Formbricks deployment is running.
 
 ## Deploy on Railway
 
@@ -60,7 +62,7 @@ To add teammates, invite them from Organization settings. Without email, copy th
 
 `PostgreSQL`: `POSTGRES_PASSWORD` and `SPICEDB_DATABASE_PASSWORD` (generated, letters and digits), `POSTGRES_DB=formbricks`. The SpiceDB role and database are created when the volume is first initialized.
 
-`Valkey`: `VALKEY_PASSWORD` (generated).
+`Valkey`: `VALKEY_PASSWORD` (generated, letters and digits).
 
 Optional upstream settings such as SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`), S3 file uploads (`S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `S3_BUCKET_NAME`, `S3_ENDPOINT_URL`) and OAuth providers can be added to the `Formbricks` service; see the [Formbricks configuration reference](https://formbricks.com/docs/self-hosting/configuration/environment-variables).
 
@@ -90,7 +92,7 @@ SMOKE_STATE=/tmp/formbricks-smoke.json SMOKE_PHASE=restart ./scripts/smoke.sh
 docker compose down -v
 ```
 
-The smoke test checks that sign-up is closed (the setup pages, Better Auth's raw sign-up route and Formbricks' sign-up action sent through several pages), that wrong passwords and anonymous management API calls are refused, signs in as the owner, creates the organization and a workspace API key, checks that webhooks to private, loopback and metadata addresses are refused, creates a link survey that closes itself after one response, answers it anonymously through the public client API, and waits for the background worker to close it. The restart phase checks that the owner, survey and response survived and runs a new survey through the same path. Set `BASE_URL` (and `PRIVATE_PROBE_HOST` to the PostgreSQL private domain) to run it against a Railway deployment.
+`./scripts/test-draft-contract.sh` (also run by `verify.sh`) runs the restore and audit scripts offline against mutated copies of the stored template in `scripts/fixtures/draft.json`. The smoke test checks that sign-up is closed (the setup pages, Better Auth's raw sign-up route and Formbricks' sign-up action sent through several pages), that wrong passwords and anonymous management API calls are refused, signs in as the owner, creates the organization and a workspace API key, checks that webhooks to private, loopback and metadata addresses are refused, creates a link survey that closes itself after one response, answers it anonymously through the public client API, and waits for the background worker to close it. The restart phase checks that the owner, survey and response survived and runs a new survey through the same path. Set `BASE_URL` (and `PRIVATE_PROBE_HOST` to the PostgreSQL private domain) to run it against a Railway deployment.
 
 ## Source and forks
 

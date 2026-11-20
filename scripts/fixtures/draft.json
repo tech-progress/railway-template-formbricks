@@ -1,0 +1,511 @@
+{
+  "data": {
+    "template": {
+      "name": "Formbricks Community Surveys",
+      "serializedConfig": {
+        "buckets": {},
+        "services": {
+          "0acfd356-80f3-46ca-b1b2-154fb288a47e": {
+            "deploy": {
+              "healthcheckPath": null,
+              "healthcheckTimeout": null,
+              "numReplicas": 1,
+              "restartPolicyMaxRetries": 10,
+              "restartPolicyType": "ON_FAILURE",
+              "startCommand": "/bin/sh -ec 'case \"${SPICEDB_DATABASE_PASSWORD:-}\" in \"\"|*[!A-Za-z0-9]*) echo \"Refusing to start: SPICEDB_DATABASE_PASSWORD must be letters and digits.\" >&2; exit 64;; esac; if [ \"${#SPICEDB_DATABASE_PASSWORD}\" -lt 24 ]; then echo \"Refusing to start: SPICEDB_DATABASE_PASSWORD must have at least 24 characters.\" >&2; exit 64; fi; mkdir -p /docker-entrypoint-initdb.d; printf \"CREATE ROLE spicedb LOGIN PASSWORD \\$spicedb\\$%s\\$spicedb\\$;\\nCREATE DATABASE spicedb OWNER spicedb;\\n\" \"$SPICEDB_DATABASE_PASSWORD\" > /docker-entrypoint-initdb.d/10-spicedb.sql; chown postgres:postgres /docker-entrypoint-initdb.d/10-spicedb.sql; chmod 0600 /docker-entrypoint-initdb.d/10-spicedb.sql; exec docker-entrypoint.sh postgres'"
+            },
+            "icon": null,
+            "name": "PostgreSQL",
+            "networking": {
+              "serviceDomains": {},
+              "tcpProxies": {}
+            },
+            "source": {
+              "image": "pgvector/pgvector:0.8.7-pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782"
+            },
+            "variables": {
+              "POSTGRES_DB": {
+                "defaultValue": "formbricks",
+                "description": "Database Formbricks and Hub share.",
+                "isOptional": false
+              },
+              "POSTGRES_PASSWORD": {
+                "defaultValue": "${{secret(48, \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\")}}",
+                "description": "Generated superuser password (letters and digits).",
+                "isOptional": false
+              },
+              "SPICEDB_DATABASE_PASSWORD": {
+                "defaultValue": "${{secret(48, \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\")}}",
+                "description": "Generated password of the spicedb role, created with its database when the volume is first initialized.",
+                "isOptional": false
+              }
+            },
+            "volumeMounts": {
+              "0acfd356-80f3-46ca-b1b2-154fb288a47e": {
+                "mountPath": "/var/lib/postgresql",
+                "sizeMB": 5000
+              }
+            }
+          },
+          "4200c334-ec09-45dc-8844-bc0fd760a356": {
+            "deploy": {
+              "healthcheckPath": "/health",
+              "healthcheckTimeout": 900,
+              "numReplicas": 1,
+              "restartPolicyMaxRetries": 10,
+              "restartPolicyType": "ON_FAILURE",
+              "startCommand": "/bin/sh -ec 'until wget -q -O /dev/null \"$FORMBRICKS_READY_URL\"; do echo \"Waiting for Formbricks migrations\"; sleep 3; done; GOOSE_DRIVER=postgres GOOSE_DBSTRING=\"$DATABASE_URL\" /usr/local/bin/goose -dir /app/migrations up; PGUSER=$(printf \"%s\" \"$DATABASE_URL\" | sed -E \"s#^[a-z]+://([^:@/]+):.*#\\1#\") PGPASSWORD=$(printf \"%s\" \"$DATABASE_URL\" | sed -E \"s#^[a-z]+://[^:@/]+:([^@]+)@.*#\\1#\") PGHOST=$(printf \"%s\" \"$DATABASE_URL\" | sed -E \"s#^[^@]+@([^:/?]+).*#\\1#\") PGPORT=$(printf \"%s\" \"$DATABASE_URL\" | sed -E \"s#^[^@]+@[^:/?]+:([0-9]+).*#\\1#\") PGDATABASE=$(printf \"%s\" \"$DATABASE_URL\" | sed -E \"s#^[^@]+@[^/]+/([^?]+).*#\\1#\") PGSSLMODE=disable /usr/local/bin/river migrate-up; exec /app/hub-api'"
+            },
+            "icon": null,
+            "name": "Formbricks Hub",
+            "networking": {
+              "serviceDomains": {},
+              "tcpProxies": {}
+            },
+            "source": {
+              "image": "ghcr.io/formbricks/hub:0.14.3@sha256:63b85da9a0eb4346dd9350cd2bc82e9fe00b195756ad9a4bd50195ba874d10bc"
+            },
+            "variables": {
+              "API_KEY": {
+                "defaultValue": "${{secret(64, \"abcdef0123456789\")}}",
+                "description": "Generated API key Formbricks uses to call Hub.",
+                "isOptional": false
+              },
+              "DATABASE_URL": {
+                "defaultValue": "postgresql://postgres:${{PostgreSQL.POSTGRES_PASSWORD}}@${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}:5432/formbricks?sslmode=disable",
+                "description": "Private PostgreSQL connection string; Hub shares the formbricks database.",
+                "isOptional": false
+              },
+              "FORMBRICKS_READY_URL": {
+                "defaultValue": "http://${{Formbricks.RAILWAY_PRIVATE_DOMAIN}}:3000/health/ready",
+                "description": "Private Formbricks readiness URL. Hub waits for Formbricks' migrations before running its own.",
+                "isOptional": false
+              },
+              "PORT": {
+                "defaultValue": "8080",
+                "description": "Hub API listener; Railway's health check calls /health on it.",
+                "isOptional": false
+              }
+            },
+            "volumeMounts": {}
+          },
+          "461b3d0a-fcdb-4ab1-b960-7cd73e59a58e": {
+            "deploy": {
+              "healthcheckPath": null,
+              "healthcheckTimeout": null,
+              "numReplicas": 1,
+              "restartPolicyMaxRetries": 10,
+              "restartPolicyType": "ON_FAILURE",
+              "startCommand": "/bin/sh -ec 'until wget -q -O /dev/null \"$HUB_HEALTH_URL\"; do echo \"Waiting for the Hub API\"; sleep 3; done; exec /app/hub-worker'"
+            },
+            "icon": null,
+            "name": "Formbricks Hub Worker",
+            "networking": {
+              "serviceDomains": {},
+              "tcpProxies": {}
+            },
+            "source": {
+              "image": "ghcr.io/formbricks/hub:0.14.3@sha256:63b85da9a0eb4346dd9350cd2bc82e9fe00b195756ad9a4bd50195ba874d10bc"
+            },
+            "variables": {
+              "DATABASE_URL": {
+                "defaultValue": "postgresql://postgres:${{PostgreSQL.POSTGRES_PASSWORD}}@${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}:5432/formbricks?sslmode=disable",
+                "description": "Private PostgreSQL connection string; the worker reads Hub's job queue.",
+                "isOptional": false
+              },
+              "HUB_HEALTH_URL": {
+                "defaultValue": "http://${{Formbricks Hub.RAILWAY_PRIVATE_DOMAIN}}:8080/health",
+                "description": "Private Hub health URL. The worker waits for Hub's migrations before starting.",
+                "isOptional": false
+              }
+            },
+            "volumeMounts": {}
+          },
+          "7dcd141a-de26-45e0-adb6-ef37ffc282b9": {
+            "build": {
+              "builder": "DOCKERFILE",
+              "dockerfilePath": "Dockerfile",
+              "watchPatterns": [
+                "/Dockerfile",
+                "/cube/**"
+              ]
+            },
+            "deploy": {
+              "healthcheckPath": "/readyz",
+              "healthcheckTimeout": 600,
+              "numReplicas": 1,
+              "restartPolicyMaxRetries": 10,
+              "restartPolicyType": "ON_FAILURE",
+              "startCommand": null
+            },
+            "icon": null,
+            "name": "Cube",
+            "networking": {
+              "serviceDomains": {},
+              "tcpProxies": {}
+            },
+            "source": {
+              "branch": "release-v1",
+              "repo": "tech-progress/railway-template-formbricks",
+              "rootDirectory": "/"
+            },
+            "variables": {
+              "CUBEJS_API_SECRET": {
+                "defaultValue": "${{secret(64, \"abcdef0123456789\")}}",
+                "description": "Generated secret that Cube uses to verify Formbricks' query tokens.",
+                "isOptional": false
+              },
+              "CUBEJS_CACHE_AND_QUEUE_DRIVER": {
+                "defaultValue": "memory",
+                "description": "In-memory cache and queue; keep Cube at one replica.",
+                "isOptional": false
+              },
+              "CUBEJS_DB_HOST": {
+                "defaultValue": "${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}",
+                "description": "Private PostgreSQL host.",
+                "isOptional": false
+              },
+              "CUBEJS_DB_NAME": {
+                "defaultValue": "formbricks",
+                "description": "Database Cube queries.",
+                "isOptional": false
+              },
+              "CUBEJS_DB_PASS": {
+                "defaultValue": "${{PostgreSQL.POSTGRES_PASSWORD}}",
+                "description": "PostgreSQL password.",
+                "isOptional": false
+              },
+              "CUBEJS_DB_PORT": {
+                "defaultValue": "5432",
+                "description": "PostgreSQL port.",
+                "isOptional": false
+              },
+              "CUBEJS_DB_QUERY_TIMEOUT": {
+                "defaultValue": "60s",
+                "description": "Per-query PostgreSQL statement timeout.",
+                "isOptional": false
+              },
+              "CUBEJS_DB_TYPE": {
+                "defaultValue": "postgres",
+                "description": "Cube's PostgreSQL driver.",
+                "isOptional": false
+              },
+              "CUBEJS_DB_USER": {
+                "defaultValue": "postgres",
+                "description": "PostgreSQL user.",
+                "isOptional": false
+              },
+              "CUBEJS_DEFAULT_API_SCOPES": {
+                "defaultValue": "meta,data",
+                "description": "Cube API scopes, as upstream.",
+                "isOptional": false
+              },
+              "CUBEJS_EXTERNAL_DEFAULT": {
+                "defaultValue": "false",
+                "description": "No external pre-aggregations, so Cube Store is not needed.",
+                "isOptional": false
+              },
+              "CUBEJS_JWT_AUDIENCE": {
+                "defaultValue": "formbricks-cube",
+                "description": "Expected audience of Formbricks' query tokens.",
+                "isOptional": false
+              },
+              "CUBEJS_JWT_ISSUER": {
+                "defaultValue": "formbricks-web",
+                "description": "Expected issuer of Formbricks' query tokens.",
+                "isOptional": false
+              },
+              "CUBEJS_TELEMETRY": {
+                "defaultValue": "false",
+                "description": "Turns off Cube's usage telemetry.",
+                "isOptional": false
+              },
+              "PORT": {
+                "defaultValue": "4000",
+                "description": "Cube API listener; Railway's health check calls /readyz on it.",
+                "isOptional": false
+              }
+            },
+            "volumeMounts": {}
+          },
+          "8e5baa4a-cdc9-4142-bc34-5fe1b0219a2a": {
+            "deploy": {
+              "healthcheckPath": "/health/ready",
+              "healthcheckTimeout": 900,
+              "numReplicas": 1,
+              "restartPolicyMaxRetries": 10,
+              "restartPolicyType": "ON_FAILURE",
+              "startCommand": "/bin/sh -ec 'owner=$(printf \"%s\" \"${FORMBRICKS_OWNER_EMAIL:-}\" | tr -d \" \\t\\r\" | tr \"A-Z\" \"a-z\"); case \"$owner\" in \"\"|*[!a-z0-9._%+@-]*) echo \"Refusing to start: set FORMBRICKS_OWNER_EMAIL to the email address of the first administrator.\" >&2; exit 64;; esac; if ! printf \"%s\" \"$owner\" | grep -Eq \"^[a-z0-9._%+-]+@[a-z0-9-]+([.][a-z0-9-]+)*[.][a-z]{2,}$\"; then echo \"Refusing to start: FORMBRICKS_OWNER_EMAIL is not a plain email address.\" >&2; exit 64; fi; case \"${FORMBRICKS_OWNER_PASSWORD:-}\" in \"\"|*[!A-Za-z0-9]*) echo \"Refusing to start: FORMBRICKS_OWNER_PASSWORD must be letters and digits.\" >&2; exit 64;; esac; case \"$FORMBRICKS_OWNER_PASSWORD\" in *[A-Z]*) ;; *) echo \"Refusing to start: FORMBRICKS_OWNER_PASSWORD needs a capital letter.\" >&2; exit 64;; esac; case \"$FORMBRICKS_OWNER_PASSWORD\" in *[0-9]*) ;; *) echo \"Refusing to start: FORMBRICKS_OWNER_PASSWORD needs a digit.\" >&2; exit 64;; esac; if [ \"${#FORMBRICKS_OWNER_PASSWORD}\" -lt 16 ] || [ \"${#FORMBRICKS_OWNER_PASSWORD}\" -gt 128 ]; then echo \"Refusing to start: FORMBRICKS_OWNER_PASSWORD must have 16 to 128 characters.\" >&2; exit 64; fi; export NODE_ENV=production; node /home/nextjs/validate-env.mjs --server; db_host=$(printf \"%s\" \"$DATABASE_URL\" | sed -E \"s#^[a-z]+://[^@]*@([^:/?]+).*#\\1#\"); until nc -z -w 3 \"$db_host\" 5432; do echo \"Waiting for PostgreSQL\"; sleep 2; done; timeout 300 node packages/database/dist/scripts/apply-migrations.js; timeout 60 node packages/database/dist/scripts/create-saml-database.js; n=0; until formbricks-authzed upgrade prepare; do n=$((n + 1)); if [ \"$n\" -ge 60 ]; then echo \"Formbricks could not prepare SpiceDB.\" >&2; exit 1; fi; echo \"Waiting for SpiceDB\"; sleep 5; done; printf \"%s\" \"InVzZSBzdHJpY3QiOwovLyBPd25lciBib290c3RyYXAgZ3VhcmQgZm9yIHNjcmlwdHMvZm9ybWJyaWNrcy1zdGFydC5zaCwgd2hpY2ggZW1iZWRzIHRoaXMgZmlsZSBhcwovLyBiYXNlNjQgYW5kIGV4cGxhaW5zIGl0LiAicHJlIE9XTkVSIjogZHJvcCBhbiBvd25lciByb3cgbGVmdCB3aXRob3V0IGNyZWRlbnRpYWwKLy8gb3IgbWVtYmVyc2hpcCwgcHJpbnQgImZyZXNoIiB3aGVuIG5vIHJlYWwgdXNlciBleGlzdHMsIGVsc2UgImluaXRpYWxpemVkIi4KLy8gInBvc3QiOiBrZWVwIGEgZGVhY3RpdmF0ZWQgc2VudGluZWwgdXNlciBzbyB0aGUgVXNlciB0YWJsZSBpcyBuZXZlciBlbXB0eS4KY29uc3QgeyBjcmVhdGVSZXF1aXJlIH0gPSByZXF1aXJlKCJub2RlOm1vZHVsZSIpOwpjb25zdCB7IHJhbmRvbUJ5dGVzIH0gPSByZXF1aXJlKCJub2RlOmNyeXB0byIpOwpjb25zdCB7IENsaWVudCB9ID0gY3JlYXRlUmVxdWlyZSgiL2hvbWUvbmV4dGpzL3BhY2thZ2VzL2RhdGFiYXNlL3BhY2thZ2UuanNvbiIpKCJwZyIpOwoKY29uc3QgU0VOVElORUxfRU1BSUwgPSAiYm9vdHN0cmFwLXNlbnRpbmVsQGZvcm1icmlja3MuaW52YWxpZCI7CmNvbnN0IFttb2RlLCBvd25lcl0gPSBwcm9jZXNzLmFyZ3Yuc2xpY2UoMik7Cgpjb25zdCBjdWlkTGlrZSA9ICgpID0+ICJzIiArIHJhbmRvbUJ5dGVzKDE4KS50b1N0cmluZygiaGV4Iikuc2xpY2UoMCwgMjQpOwoKY29uc3QgbWFpbiA9IGFzeW5jICgpID0+IHsKICBpZiAobW9kZSAhPT0gInByZSIgJiYgbW9kZSAhPT0gInBvc3QiKSB0aHJvdyBuZXcgRXJyb3IoInVzYWdlOiBmb3JtYnJpY2tzLWd1YXJkLmNqcyBwcmUgT1dORVIgfCBwb3N0Iik7CiAgaWYgKG1vZGUgPT09ICJwcmUiICYmICEvXlthLXowLTkuXyUrQC1dKyQvLnRlc3Qob3duZXIgfHwgIiIpKSB0aHJvdyBuZXcgRXJyb3IoInByZSBuZWVkcyB0aGUgbm9ybWFsaXplZCBvd25lciBlbWFpbCIpOwogIGNvbnN0IHVybCA9IG5ldyBVUkwocHJvY2Vzcy5lbnYuREFUQUJBU0VfVVJMKTsKICB1cmwuc2VhcmNoUGFyYW1zLmRlbGV0ZSgic2NoZW1hIik7CiAgY29uc3QgZGIgPSBuZXcgQ2xpZW50KHsgY29ubmVjdGlvblN0cmluZzogdXJsLnRvU3RyaW5nKCkgfSk7CiAgYXdhaXQgZGIuY29ubmVjdCgpOwogIHRyeSB7CiAgICBhd2FpdCBkYi5xdWVyeSgiQkVHSU4iKTsKICAgIGF3YWl0IGRiLnF1ZXJ5KCdMT0NLIFRBQkxFICJVc2VyIiBJTiBTSEFSRSBST1cgRVhDTFVTSVZFIE1PREUnKTsKICAgIGlmIChtb2RlID09PSAicHJlIikgewogICAgICBjb25zdCBvcnBoYW4gPSBhd2FpdCBkYi5xdWVyeSgKICAgICAgICBgREVMRVRFIEZST00gIlVzZXIiIHUgV0hFUkUgbG93ZXIodS5lbWFpbCkgPSAkMQogICAgICAgICAgIEFORCBOT1QgRVhJU1RTIChTRUxFQ1QgMSBGUk9NICJBY2NvdW50IiBhIFdIRVJFIGEuInVzZXJJZCIgPSB1LmlkKQogICAgICAgICAgIEFORCBOT1QgRVhJU1RTIChTRUxFQ1QgMSBGUk9NICJNZW1iZXJzaGlwIiBtIFdIRVJFIG0uInVzZXJJZCIgPSB1LmlkKQogICAgICAgICBSRVRVUk5JTkcgdS5pZGAsCiAgICAgICAgW293bmVyXQogICAgICApOwogICAgICBpZiAob3JwaGFuLnJvd0NvdW50ID4gMCkgY29uc29sZS5lcnJvcigiUmVtb3ZlZCBhbiBvd25lciByb3cgbGVmdCB3aXRob3V0IGEgY3JlZGVudGlhbCBieSBhbiBpbnRlcnJ1cHRlZCBib290c3RyYXAuIik7CiAgICAgIGNvbnN0IHJlYWwgPSBhd2FpdCBkYi5xdWVyeSgnU0VMRUNUIGNvdW50KCopOjppbnQgQVMgbiBGUk9NICJVc2VyIiBXSEVSRSBlbWFpbCA8PiAkMScsIFtTRU5USU5FTF9FTUFJTF0pOwogICAgICBpZiAocmVhbC5yb3dzWzBdLm4gPT09IDApIHsKICAgICAgICBhd2FpdCBkYi5xdWVyeSgnREVMRVRFIEZST00gIlVzZXIiIFdIRVJFIGVtYWlsID0gJDEnLCBbU0VOVElORUxfRU1BSUxdKTsKICAgICAgICBjb25zb2xlLmxvZygiZnJlc2giKTsKICAgICAgfSBlbHNlIHsKICAgICAgICBjb25zb2xlLmxvZygiaW5pdGlhbGl6ZWQiKTsKICAgICAgfQogICAgfSBlbHNlIHsKICAgICAgYXdhaXQgZGIucXVlcnkoCiAgICAgICAgYElOU0VSVCBJTlRPICJVc2VyIiAoaWQsIHVwZGF0ZWRfYXQsIG5hbWUsIGVtYWlsLCAiaXNBY3RpdmUiKQogICAgICAgICBWQUxVRVMgKCQxLCBub3coKSwgJDIsICQzLCBmYWxzZSkgT04gQ09ORkxJQ1QgKGVtYWlsKSBETyBOT1RISU5HYCwKICAgICAgICBbY3VpZExpa2UoKSwgIkJvb3RzdHJhcCBzZW50aW5lbCAoa2VlcHMgc2lnbi11cCBjbG9zZWQ7IGRvIG5vdCBkZWxldGUpIiwgU0VOVElORUxfRU1BSUxdCiAgICAgICk7CiAgICAgIGNvbnN0IGNvdW50ID0gYXdhaXQgZGIucXVlcnkoJ1NFTEVDVCBjb3VudCgqKTo6aW50IEFTIG4gRlJPTSAiVXNlciIgV0hFUkUgZW1haWwgPSAkMScsIFtTRU5USU5FTF9FTUFJTF0pOwogICAgICBpZiAoY291bnQucm93c1swXS5uICE9PSAxKSB0aHJvdyBuZXcgRXJyb3IoInNlbnRpbmVsIHVzZXIgbWlzc2luZyBhZnRlciBpbnNlcnQiKTsKICAgIH0KICAgIGF3YWl0IGRiLnF1ZXJ5KCJDT01NSVQiKTsKICB9IGNhdGNoIChlcnJvcikgewogICAgYXdhaXQgZGIucXVlcnkoIlJPTExCQUNLIikuY2F0Y2goKCkgPT4gdW5kZWZpbmVkKTsKICAgIHRocm93IGVycm9yOwogIH0gZmluYWxseSB7CiAgICBhd2FpdCBkYi5lbmQoKTsKICB9Cn07CgptYWluKCkuY2F0Y2goKGVycm9yKSA9PiB7CiAgY29uc29sZS5lcnJvcihgRm9ybWJyaWNrcyBib290c3RyYXAgZ3VhcmQgZmFpbGVkOiAke2Vycm9yLm1lc3NhZ2V9YCk7CiAgcHJvY2Vzcy5leGl0KDEpOwp9KTsK\" | base64 -d > /tmp/formbricks-guard.cjs; state=$(node /tmp/formbricks-guard.cjs pre \"$owner\"); HOSTNAME=127.0.0.1 env -u FORMBRICKS_OWNER_PASSWORD node apps/web/online-server.js & pid=$!; trap \"kill -TERM $pid 2>/dev/null; exit 143\" TERM INT; until wget -q -O /dev/null \"http://127.0.0.1:${PORT}/health/ready\"; do if ! kill -0 \"$pid\" 2>/dev/null; then echo \"Formbricks exited during the provisioning boot.\" >&2; exit 1; fi; sleep 2; done; umask 077; [ \"$state\" != fresh ] || action=$(node -e \"const [file, name, source] = process.argv.slice(1); const actions = require(file).node; const ids = Object.keys(actions).filter((id) => actions[id].exportedName === name && actions[id].filename === source); if (ids.length !== 1) process.exit(1); console.log(ids[0]);\" /home/nextjs/apps/web/.next/server/server-reference-manifest.json createUserAction apps/web/modules/auth/signup/actions.ts); [ \"$state\" != fresh ] || printf \"[{\\\"name\\\":\\\"Owner\\\",\\\"email\\\":\\\"%s\\\",\\\"password\\\":\\\"%s\\\"}]\" \"$owner\" \"$FORMBRICKS_OWNER_PASSWORD\" > /tmp/formbricks-owner.json; [ \"$state\" != fresh ] || wget -q -O /tmp/formbricks-owner.out --header \"Next-Action: $action\" --header \"Accept: text/x-component\" --header \"Content-Type: text/plain;charset=UTF-8\" --header \"Origin: http://127.0.0.1:${PORT}\" --post-file /tmp/formbricks-owner.json \"http://127.0.0.1:${PORT}/setup/signup\" || true; rm -f /tmp/formbricks-owner.json; [ \"$state\" != fresh ] || grep -q \"\\\"data\\\":{\\\"success\\\":true}\" /tmp/formbricks-owner.out 2>/dev/null || { echo \"Owner bootstrap failed; stopping.\" >&2; kill -TERM \"$pid\"; wait \"$pid\" || true; exit 1; }; rm -f /tmp/formbricks-owner.out; [ \"$state\" != fresh ] || printf \"{\\\"email\\\":\\\"%s\\\",\\\"password\\\":\\\"%s\\\"}\" \"$owner\" \"$FORMBRICKS_OWNER_PASSWORD\" > /tmp/formbricks-signin.json; [ \"$state\" != fresh ] || wget -q -O /dev/null --header \"Content-Type: application/json\" --post-file /tmp/formbricks-signin.json \"http://127.0.0.1:${PORT}/api/auth/sign-in/email\" || { rm -f /tmp/formbricks-signin.json; echo \"The new owner account cannot sign in; stopping.\" >&2; kill -TERM \"$pid\"; wait \"$pid\" || true; exit 1; }; rm -f /tmp/formbricks-signin.json; node /tmp/formbricks-guard.cjs post; [ \"$state\" = fresh ] && echo \"Created the Formbricks owner account for $owner.\" || echo \"Formbricks already has an owner account.\"; kill -TERM \"$pid\" 2>/dev/null || true; wait \"$pid\" || true; trap - TERM INT; exec env -u FORMBRICKS_OWNER_PASSWORD node apps/web/online-server.js'"
+            },
+            "icon": null,
+            "name": "Formbricks",
+            "networking": {
+              "serviceDomains": {
+                "<hasDomain>": {
+                  "port": 3000
+                }
+              },
+              "tcpProxies": {}
+            },
+            "source": {
+              "image": "ghcr.io/formbricks/formbricks:6.2.1@sha256:0da58d1bf3ea86d355d8e682851fdb74b4cb19ed7d7436a82ab069db7ba2b992"
+            },
+            "variables": {
+              "AUTHZED_CONSISTENCY": {
+                "defaultValue": "fully_consistent",
+                "description": "SpiceDB consistency mode for permission checks.",
+                "isOptional": false
+              },
+              "AUTHZED_ENABLED": {
+                "defaultValue": "true",
+                "description": "Formbricks 6 requires SpiceDB authorization.",
+                "isOptional": false
+              },
+              "AUTHZED_ENDPOINT": {
+                "defaultValue": "${{SpiceDB.RAILWAY_PRIVATE_DOMAIN}}:50051",
+                "description": "Private SpiceDB gRPC endpoint.",
+                "isOptional": false
+              },
+              "AUTHZED_INSECURE": {
+                "defaultValue": "true",
+                "description": "Plaintext gRPC to SpiceDB over Railway's private network.",
+                "isOptional": false
+              },
+              "AUTHZED_SYSTEM_KEY": {
+                "defaultValue": "formbricks",
+                "description": "Name of the Formbricks system object in SpiceDB.",
+                "isOptional": false
+              },
+              "AUTHZED_TOKEN": {
+                "defaultValue": "${{SpiceDB.SPICEDB_GRPC_PRESHARED_KEY}}",
+                "description": "SpiceDB preshared key.",
+                "isOptional": false
+              },
+              "BETTER_AUTH_SECRET": {
+                "defaultValue": "${{secret(64, \"abcdef0123456789\")}}",
+                "description": "Generated secret that signs sessions and invite, verification and email-change tokens.",
+                "isOptional": false
+              },
+              "BETTER_AUTH_URL": {
+                "defaultValue": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
+                "description": "Public Formbricks URL used for authentication and cookies. Keep it equal to WEBAPP_URL.",
+                "isOptional": false
+              },
+              "CRON_SECRET": {
+                "defaultValue": "${{secret(64, \"abcdef0123456789\")}}",
+                "description": "Generated secret for Formbricks' cron API.",
+                "isOptional": false
+              },
+              "CUBEJS_API_SECRET": {
+                "defaultValue": "${{Cube.CUBEJS_API_SECRET}}",
+                "description": "Secret Formbricks signs Cube query tokens with; shared with the Cube service.",
+                "isOptional": false
+              },
+              "CUBEJS_API_URL": {
+                "defaultValue": "http://${{Cube.RAILWAY_PRIVATE_DOMAIN}}:4000",
+                "description": "Private Cube URL.",
+                "isOptional": false
+              },
+              "CUBEJS_JWT_AUDIENCE": {
+                "defaultValue": "formbricks-cube",
+                "description": "Audience claim of Cube query tokens; must match the Cube service.",
+                "isOptional": false
+              },
+              "CUBEJS_JWT_ISSUER": {
+                "defaultValue": "formbricks-web",
+                "description": "Issuer claim of Cube query tokens; must match the Cube service.",
+                "isOptional": false
+              },
+              "DATABASE_URL": {
+                "defaultValue": "postgresql://postgres:${{PostgreSQL.POSTGRES_PASSWORD}}@${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}:5432/formbricks?schema=public",
+                "description": "Private PostgreSQL connection string for the formbricks database.",
+                "isOptional": false
+              },
+              "EMAIL_VERIFICATION_DISABLED": {
+                "defaultValue": "1",
+                "description": "No email provider is configured. Set to 0 after adding SMTP variables.",
+                "isOptional": false
+              },
+              "ENCRYPTION_KEY": {
+                "defaultValue": "${{secret(64, \"abcdef0123456789\")}}",
+                "description": "Generated key for two-factor secrets and single-use survey links. Do not change it after first use.",
+                "isOptional": false
+              },
+              "FORMBRICKS_OWNER_EMAIL": {
+                "defaultValue": "",
+                "description": "Required. Your email address. Formbricks creates the owner account for it before its public listener opens, and refuses to start while it is empty.",
+                "isOptional": false
+              },
+              "FORMBRICKS_OWNER_PASSWORD": {
+                "defaultValue": "Fb7${{secret(29, \"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789\")}}",
+                "description": "Generated password of the owner account created at first start. Sign in with it and keep it in a password manager; password reset needs email.",
+                "isOptional": false
+              },
+              "HOSTNAME": {
+                "defaultValue": "::",
+                "description": "Listen on IPv4 and IPv6 so Railway private networking reaches Formbricks.",
+                "isOptional": false
+              },
+              "HUB_API_KEY": {
+                "defaultValue": "${{Formbricks Hub.API_KEY}}",
+                "description": "API key of the private Formbricks Hub service.",
+                "isOptional": false
+              },
+              "HUB_API_URL": {
+                "defaultValue": "http://${{Formbricks Hub.RAILWAY_PRIVATE_DOMAIN}}:8080",
+                "description": "Private Formbricks Hub URL.",
+                "isOptional": false
+              },
+              "PASSWORD_RESET_DISABLED": {
+                "defaultValue": "1",
+                "description": "No email provider is configured. Set to 0 after adding SMTP variables.",
+                "isOptional": false
+              },
+              "PORT": {
+                "defaultValue": "3000",
+                "description": "Formbricks listener; Railway's health check calls /health/ready on it.",
+                "isOptional": false
+              },
+              "REDIS_URL": {
+                "defaultValue": "redis://default:${{Valkey.VALKEY_PASSWORD}}@${{Valkey.RAILWAY_PRIVATE_DOMAIN}}:6379",
+                "description": "Private password-protected Valkey for sessions, rate limits and the background job queue.",
+                "isOptional": false
+              },
+              "TELEMETRY_DISABLED": {
+                "defaultValue": "1",
+                "description": "Turns off Formbricks' anonymous usage telemetry.",
+                "isOptional": false
+              },
+              "TRUSTED_PROXY_HOP_COUNT": {
+                "defaultValue": "1",
+                "description": "X-Forwarded-For hops Formbricks trusts for the client IP behind Railway's edge; rate limits use it.",
+                "isOptional": false
+              },
+              "WEBAPP_URL": {
+                "defaultValue": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
+                "description": "Public Formbricks URL used in links and survey pages. Change it with BETTER_AUTH_URL if you add a custom domain.",
+                "isOptional": false
+              }
+            },
+            "volumeMounts": {}
+          },
+          "9368208d-e53d-4edf-aee4-bad2ae793925": {
+            "deploy": {
+              "healthcheckPath": "/healthz",
+              "healthcheckTimeout": 600,
+              "numReplicas": 1,
+              "restartPolicyMaxRetries": 10,
+              "restartPolicyType": "ON_FAILURE",
+              "startCommand": "/bin/sh -ec 'n=0; until spicedb datastore migrate head; do n=$((n + 1)); if [ \"$n\" -ge 60 ]; then echo \"SpiceDB could not migrate its datastore.\" >&2; exit 1; fi; echo \"Waiting for PostgreSQL\"; sleep 5; done; exec spicedb serve --telemetry-endpoint=\"\"'"
+            },
+            "icon": null,
+            "name": "SpiceDB",
+            "networking": {
+              "serviceDomains": {},
+              "tcpProxies": {}
+            },
+            "source": {
+              "image": "authzed/spicedb:v1.57.0-debug@sha256:fdeb87ac0cbc31dc977b4d6c334ae3cae708069873706099c9d350089e85fd6d"
+            },
+            "variables": {
+              "PORT": {
+                "defaultValue": "8443",
+                "description": "SpiceDB HTTP listener; Railway's health check calls /healthz on it. gRPC stays on 50051.",
+                "isOptional": false
+              },
+              "SPICEDB_DATASTORE_CONN_POOL_READ_MAX_OPEN": {
+                "defaultValue": "8",
+                "description": "Read connection pool cap, sized for one small PostgreSQL.",
+                "isOptional": false
+              },
+              "SPICEDB_DATASTORE_CONN_POOL_READ_MIN_OPEN": {
+                "defaultValue": "2",
+                "description": "Read connections kept open.",
+                "isOptional": false
+              },
+              "SPICEDB_DATASTORE_CONN_POOL_WRITE_MAX_OPEN": {
+                "defaultValue": "4",
+                "description": "Write connection pool cap.",
+                "isOptional": false
+              },
+              "SPICEDB_DATASTORE_CONN_POOL_WRITE_MIN_OPEN": {
+                "defaultValue": "1",
+                "description": "Write connections kept open.",
+                "isOptional": false
+              },
+              "SPICEDB_DATASTORE_CONN_URI": {
+                "defaultValue": "postgresql://spicedb:${{PostgreSQL.SPICEDB_DATABASE_PASSWORD}}@${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}:5432/spicedb?sslmode=disable",
+                "description": "Private connection string for SpiceDB's own role and database.",
+                "isOptional": false
+              },
+              "SPICEDB_DATASTORE_ENGINE": {
+                "defaultValue": "postgres",
+                "description": "SpiceDB stores relationships in PostgreSQL.",
+                "isOptional": false
+              },
+              "SPICEDB_GRPC_PRESHARED_KEY": {
+                "defaultValue": "${{secret(64, \"abcdef0123456789\")}}",
+                "description": "Generated key that Formbricks presents to SpiceDB.",
+                "isOptional": false
+              },
+              "SPICEDB_HTTP_ENABLED": {
+                "defaultValue": "true",
+                "description": "Enables SpiceDB's HTTP listener for the health check.",
+                "isOptional": false
+              },
+              "SPICEDB_LOG_FORMAT": {
+                "defaultValue": "json",
+                "description": "JSON logs.",
+                "isOptional": false
+              },
+              "SPICEDB_LOG_LEVEL": {
+                "defaultValue": "warn",
+                "description": "Warnings and errors only; info logs every gRPC call.",
+                "isOptional": false
+              },
+              "SPICEDB_SKIP_RELEASE_CHECK": {
+                "defaultValue": "true",
+                "description": "Skips SpiceDB's check for newer releases at start.",
+                "isOptional": false
+              }
+            },
+            "volumeMounts": {}
+          },
+          "d9144b28-ed33-41a7-a1fe-ed970bd41ae2": {
+            "deploy": {
+              "healthcheckPath": null,
+              "healthcheckTimeout": null,
+              "numReplicas": 1,
+              "restartPolicyMaxRetries": 10,
+              "restartPolicyType": "ON_FAILURE",
+              "startCommand": "/bin/sh -ec 'case \"${VALKEY_PASSWORD:-}\" in \"\"|*[!A-Za-z0-9]*) echo \"Refusing to start: VALKEY_PASSWORD must be letters and digits.\" >&2; exit 64;; esac; umask 077; printf \"requirepass %s\\n\" \"$VALKEY_PASSWORD\" > /tmp/valkey-railway.conf; chown valkey:valkey /tmp/valkey-railway.conf; cd /data; exec docker-entrypoint.sh /tmp/valkey-railway.conf --appendonly yes --maxmemory-policy noeviction'"
+            },
+            "icon": null,
+            "name": "Valkey",
+            "networking": {
+              "serviceDomains": {},
+              "tcpProxies": {}
+            },
+            "source": {
+              "image": "valkey/valkey:9.1.2@sha256:418652cfb58ef879d4978c33553735d7147016032d5aefaa14c828e611eb9dfd"
+            },
+            "variables": {
+              "VALKEY_PASSWORD": {
+                "defaultValue": "${{secret(48, \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\")}}",
+                "description": "Generated Valkey password.",
+                "isOptional": false
+              }
+            },
+            "volumeMounts": {
+              "d9144b28-ed33-41a7-a1fe-ed970bd41ae2": {
+                "mountPath": "/data",
+                "sizeMB": 1000
+              }
+            }
+          }
+        }
+      },
+      "status": "UNPUBLISHED"
+    }
+  }
+}
