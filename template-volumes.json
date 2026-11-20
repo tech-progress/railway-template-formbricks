@@ -1,0 +1,4 @@
+{
+  "PostgreSQL": {"mountPath": "/var/lib/postgresql", "sizeMB": 5000},
+  "Valkey": {"mountPath": "/data", "sizeMB": 1000}
+}

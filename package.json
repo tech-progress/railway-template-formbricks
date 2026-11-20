@@ -1,0 +1,12 @@
+{
+  "name": "railway-formbricks-surveys-template",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "./scripts/smoke.sh",
+    "verify": "./scripts/verify.sh"
+  },
+  "devDependencies": {
+    "railway": "3.6.0"
+  }
+}

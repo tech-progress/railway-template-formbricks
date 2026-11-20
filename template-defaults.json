@@ -1,0 +1,80 @@
+{
+  "Formbricks": {
+    "PORT": "3000",
+    "HOSTNAME": "::",
+    "WEBAPP_URL": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
+    "BETTER_AUTH_URL": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
+    "DATABASE_URL": "postgresql://postgres:${{PostgreSQL.POSTGRES_PASSWORD}}@${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}:5432/formbricks?schema=public",
+    "BETTER_AUTH_SECRET": "${{secret(64, \"abcdef0123456789\")}}",
+    "ENCRYPTION_KEY": "${{secret(64, \"abcdef0123456789\")}}",
+    "CRON_SECRET": "${{secret(64, \"abcdef0123456789\")}}",
+    "REDIS_URL": "redis://default:${{Valkey.VALKEY_PASSWORD}}@${{Valkey.RAILWAY_PRIVATE_DOMAIN}}:6379",
+    "HUB_API_KEY": "${{Formbricks Hub.API_KEY}}",
+    "HUB_API_URL": "http://${{Formbricks Hub.RAILWAY_PRIVATE_DOMAIN}}:8080",
+    "CUBEJS_API_URL": "http://${{Cube.RAILWAY_PRIVATE_DOMAIN}}:4000",
+    "CUBEJS_API_SECRET": "${{Cube.CUBEJS_API_SECRET}}",
+    "CUBEJS_JWT_ISSUER": "formbricks-web",
+    "CUBEJS_JWT_AUDIENCE": "formbricks-cube",
+    "AUTHZED_ENABLED": "true",
+    "AUTHZED_ENDPOINT": "${{SpiceDB.RAILWAY_PRIVATE_DOMAIN}}:50051",
+    "AUTHZED_TOKEN": "${{SpiceDB.SPICEDB_GRPC_PRESHARED_KEY}}",
+    "AUTHZED_SYSTEM_KEY": "formbricks",
+    "AUTHZED_INSECURE": "true",
+    "AUTHZED_CONSISTENCY": "fully_consistent",
+    "EMAIL_VERIFICATION_DISABLED": "1",
+    "PASSWORD_RESET_DISABLED": "1",
+    "TELEMETRY_DISABLED": "1",
+    "TRUSTED_PROXY_HOP_COUNT": "1",
+    "FORMBRICKS_OWNER_EMAIL": "",
+    "FORMBRICKS_OWNER_PASSWORD": "Fb7${{secret(29, \"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789\")}}"
+  },
+  "Formbricks Hub": {
+    "PORT": "8080",
+    "API_KEY": "${{secret(64, \"abcdef0123456789\")}}",
+    "DATABASE_URL": "postgresql://postgres:${{PostgreSQL.POSTGRES_PASSWORD}}@${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}:5432/formbricks?sslmode=disable",
+    "FORMBRICKS_READY_URL": "http://${{Formbricks.RAILWAY_PRIVATE_DOMAIN}}:3000/health/ready"
+  },
+  "Formbricks Hub Worker": {
+    "DATABASE_URL": "postgresql://postgres:${{PostgreSQL.POSTGRES_PASSWORD}}@${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}:5432/formbricks?sslmode=disable",
+    "HUB_HEALTH_URL": "http://${{Formbricks Hub.RAILWAY_PRIVATE_DOMAIN}}:8080/health"
+  },
+  "Cube": {
+    "PORT": "4000",
+    "CUBEJS_DB_TYPE": "postgres",
+    "CUBEJS_DB_HOST": "${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}",
+    "CUBEJS_DB_PORT": "5432",
+    "CUBEJS_DB_NAME": "formbricks",
+    "CUBEJS_DB_USER": "postgres",
+    "CUBEJS_DB_PASS": "${{PostgreSQL.POSTGRES_PASSWORD}}",
+    "CUBEJS_API_SECRET": "${{secret(64, \"abcdef0123456789\")}}",
+    "CUBEJS_JWT_ISSUER": "formbricks-web",
+    "CUBEJS_JWT_AUDIENCE": "formbricks-cube",
+    "CUBEJS_DEFAULT_API_SCOPES": "meta,data",
+    "CUBEJS_EXTERNAL_DEFAULT": "false",
+    "CUBEJS_CACHE_AND_QUEUE_DRIVER": "memory",
+    "CUBEJS_DB_QUERY_TIMEOUT": "60s",
+    "CUBEJS_TELEMETRY": "false"
+  },
+  "SpiceDB": {
+    "PORT": "8443",
+    "SPICEDB_HTTP_ENABLED": "true",
+    "SPICEDB_DATASTORE_ENGINE": "postgres",
+    "SPICEDB_DATASTORE_CONN_URI": "postgresql://spicedb:${{PostgreSQL.SPICEDB_DATABASE_PASSWORD}}@${{PostgreSQL.RAILWAY_PRIVATE_DOMAIN}}:5432/spicedb?sslmode=disable",
+    "SPICEDB_GRPC_PRESHARED_KEY": "${{secret(64, \"abcdef0123456789\")}}",
+    "SPICEDB_DATASTORE_CONN_POOL_READ_MAX_OPEN": "8",
+    "SPICEDB_DATASTORE_CONN_POOL_READ_MIN_OPEN": "2",
+    "SPICEDB_DATASTORE_CONN_POOL_WRITE_MAX_OPEN": "4",
+    "SPICEDB_DATASTORE_CONN_POOL_WRITE_MIN_OPEN": "1",
+    "SPICEDB_SKIP_RELEASE_CHECK": "true",
+    "SPICEDB_LOG_FORMAT": "json",
+    "SPICEDB_LOG_LEVEL": "warn"
+  },
+  "PostgreSQL": {
+    "POSTGRES_DB": "formbricks",
+    "POSTGRES_PASSWORD": "${{secret(48, \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\")}}",
+    "SPICEDB_DATABASE_PASSWORD": "${{secret(48, \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\")}}"
+  },
+  "Valkey": {
+    "VALKEY_PASSWORD": "${{secret(48, \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\")}}"
+  }
+}

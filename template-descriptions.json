@@ -1,0 +1,80 @@
+{
+  "Formbricks": {
+    "PORT": "Formbricks listener; Railway's health check calls /health/ready on it.",
+    "HOSTNAME": "Listen on IPv4 and IPv6 so Railway private networking reaches Formbricks.",
+    "WEBAPP_URL": "Public Formbricks URL used in links and survey pages. Change it with BETTER_AUTH_URL if you add a custom domain.",
+    "BETTER_AUTH_URL": "Public Formbricks URL used for authentication and cookies. Keep it equal to WEBAPP_URL.",
+    "DATABASE_URL": "Private PostgreSQL connection string for the formbricks database.",
+    "BETTER_AUTH_SECRET": "Generated secret that signs sessions and invite, verification and email-change tokens.",
+    "ENCRYPTION_KEY": "Generated key for two-factor secrets and single-use survey links. Do not change it after first use.",
+    "CRON_SECRET": "Generated secret for Formbricks' cron API.",
+    "REDIS_URL": "Private password-protected Valkey for sessions, rate limits and the background job queue.",
+    "HUB_API_KEY": "API key of the private Formbricks Hub service.",
+    "HUB_API_URL": "Private Formbricks Hub URL.",
+    "CUBEJS_API_URL": "Private Cube URL.",
+    "CUBEJS_API_SECRET": "Secret Formbricks signs Cube query tokens with; shared with the Cube service.",
+    "CUBEJS_JWT_ISSUER": "Issuer claim of Cube query tokens; must match the Cube service.",
+    "CUBEJS_JWT_AUDIENCE": "Audience claim of Cube query tokens; must match the Cube service.",
+    "AUTHZED_ENABLED": "Formbricks 6 requires SpiceDB authorization.",
+    "AUTHZED_ENDPOINT": "Private SpiceDB gRPC endpoint.",
+    "AUTHZED_TOKEN": "SpiceDB preshared key.",
+    "AUTHZED_SYSTEM_KEY": "Name of the Formbricks system object in SpiceDB.",
+    "AUTHZED_INSECURE": "Plaintext gRPC to SpiceDB over Railway's private network.",
+    "AUTHZED_CONSISTENCY": "SpiceDB consistency mode for permission checks.",
+    "EMAIL_VERIFICATION_DISABLED": "No email provider is configured. Set to 0 after adding SMTP variables.",
+    "PASSWORD_RESET_DISABLED": "No email provider is configured. Set to 0 after adding SMTP variables.",
+    "TELEMETRY_DISABLED": "Turns off Formbricks' anonymous usage telemetry.",
+    "TRUSTED_PROXY_HOP_COUNT": "X-Forwarded-For hops Formbricks trusts for the client IP behind Railway's edge; rate limits use it.",
+    "FORMBRICKS_OWNER_EMAIL": "Required. Your email address. Formbricks creates the owner account for it before its public listener opens, and refuses to start while it is empty.",
+    "FORMBRICKS_OWNER_PASSWORD": "Generated password of the owner account created at first start. Sign in with it and keep it in a password manager; password reset needs email."
+  },
+  "Formbricks Hub": {
+    "PORT": "Hub API listener; Railway's health check calls /health on it.",
+    "API_KEY": "Generated API key Formbricks uses to call Hub.",
+    "DATABASE_URL": "Private PostgreSQL connection string; Hub shares the formbricks database.",
+    "FORMBRICKS_READY_URL": "Private Formbricks readiness URL. Hub waits for Formbricks' migrations before running its own."
+  },
+  "Formbricks Hub Worker": {
+    "DATABASE_URL": "Private PostgreSQL connection string; the worker reads Hub's job queue.",
+    "HUB_HEALTH_URL": "Private Hub health URL. The worker waits for Hub's migrations before starting."
+  },
+  "Cube": {
+    "PORT": "Cube API listener; Railway's health check calls /readyz on it.",
+    "CUBEJS_DB_TYPE": "Cube's PostgreSQL driver.",
+    "CUBEJS_DB_HOST": "Private PostgreSQL host.",
+    "CUBEJS_DB_PORT": "PostgreSQL port.",
+    "CUBEJS_DB_NAME": "Database Cube queries.",
+    "CUBEJS_DB_USER": "PostgreSQL user.",
+    "CUBEJS_DB_PASS": "PostgreSQL password.",
+    "CUBEJS_API_SECRET": "Generated secret that Cube uses to verify Formbricks' query tokens.",
+    "CUBEJS_JWT_ISSUER": "Expected issuer of Formbricks' query tokens.",
+    "CUBEJS_JWT_AUDIENCE": "Expected audience of Formbricks' query tokens.",
+    "CUBEJS_DEFAULT_API_SCOPES": "Cube API scopes, as upstream.",
+    "CUBEJS_EXTERNAL_DEFAULT": "No external pre-aggregations, so Cube Store is not needed.",
+    "CUBEJS_CACHE_AND_QUEUE_DRIVER": "In-memory cache and queue; keep Cube at one replica.",
+    "CUBEJS_DB_QUERY_TIMEOUT": "Per-query PostgreSQL statement timeout.",
+    "CUBEJS_TELEMETRY": "Turns off Cube's usage telemetry."
+  },
+  "SpiceDB": {
+    "PORT": "SpiceDB HTTP listener; Railway's health check calls /healthz on it. gRPC stays on 50051.",
+    "SPICEDB_HTTP_ENABLED": "Enables SpiceDB's HTTP listener for the health check.",
+    "SPICEDB_DATASTORE_ENGINE": "SpiceDB stores relationships in PostgreSQL.",
+    "SPICEDB_DATASTORE_CONN_URI": "Private connection string for SpiceDB's own role and database.",
+    "SPICEDB_GRPC_PRESHARED_KEY": "Generated key that Formbricks presents to SpiceDB.",
+    "SPICEDB_DATASTORE_CONN_POOL_READ_MAX_OPEN": "Read connection pool cap, sized for one small PostgreSQL.",
+    "SPICEDB_DATASTORE_CONN_POOL_READ_MIN_OPEN": "Read connections kept open.",
+    "SPICEDB_DATASTORE_CONN_POOL_WRITE_MAX_OPEN": "Write connection pool cap.",
+    "SPICEDB_DATASTORE_CONN_POOL_WRITE_MIN_OPEN": "Write connections kept open.",
+    "SPICEDB_SKIP_RELEASE_CHECK": "Skips SpiceDB's check for newer releases at start.",
+    "SPICEDB_LOG_FORMAT": "JSON logs.",
+    "SPICEDB_LOG_LEVEL": "Warnings and errors only; info logs every gRPC call."
+  },
+  "PostgreSQL": {
+    "POSTGRES_DB": "Database Formbricks and Hub share.",
+    "POSTGRES_PASSWORD": "Generated superuser password (letters and digits).",
+    "SPICEDB_DATABASE_PASSWORD": "Generated password of the spicedb role, created with its database when the volume is first initialized."
+  },
+  "Valkey": {
+    "VALKEY_PASSWORD": "Generated Valkey password."
+  }
+}
